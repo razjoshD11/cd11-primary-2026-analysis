@@ -243,7 +243,7 @@ function panel(){
   DATA.citywide.candidates.slice(0,6).forEach(c=>h+=`<tr><td>${c.name}</td><td>${c.votes.toLocaleString()}</td><td>${(c.share*100).toFixed(1)}%</td></tr>`);
   h+='</table>';
   ['d2','d4'].forEach(u=>{ const r=(DATA.rcv||{})[u]; if(!r)return;
-    h+=`<h3>${r.contest.replace('MEMBER, BOARD OF SUPERVISORS, ','')} — RCV <span class="chip meas">official count</span></h3>`;
+    h+=`<h3>${r.contest.replace('MEMBER, BOARD OF SUPERVISORS, ','')} — ranked-choice <span class="chip meas">official count</span></h3>`;
     h+='<table><tr><th>#</th><th>Candidate</th><th>1st-choice</th></tr>';
     r.first_choice.forEach((c,i)=>h+=`<tr><td>${i+1}</td><td>${c.candidate.replace(/\b\w/g,m=>m.toUpperCase())}</td><td>${((c.pct||0)*100).toFixed(1)}%</td></tr>`);
     h+='</table>';
