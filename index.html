@@ -114,6 +114,7 @@ function topBottom(m){
           bottom:new Set(rows.slice(-10).map(r=>r.id))};
 }
 let mode='winner', geoMode='precinct', layer=null, selectedSD=null, selectedPrecinct=null, lastUnit={}, lastForceP=false;
+let styleFn=null, _pickTs=0;   // styleFn: current layer style (so deselect can restyle); _pickTs: last feature-click time
 
 function unit(r){ return geoMode==='supervisor' ? ('SD'+r.supervisor_district)
                 : geoMode==='cd11' ? 'ALL' : String(r.precinct); }
@@ -269,24 +270,24 @@ function draw(){
   const useSD = (!forcePrecinct && geoMode==='supervisor' && DATA.sd_geo);
   const useCD = (!forcePrecinct && geoMode==='cd11' && DATA.cd11_geo);
   const gj = useSD ? DATA.sd_geo : useCD ? DATA.cd11_geo : DATA.geo;
-  function styleFn(f){
+  styleFn = function(f){
     if(useSD) return sdStyle(f);
     if(useCD) return cdStyle(f);
     const key = forcePrecinct ? String(f.properties.precinct)
               : geoMode==='cd11' ? 'ALL' : String(f.properties.precinct);   // 'ALL' = fallback if cd11_geo missing
     return precStyle(f, unitColor[key]||'#e8e8e8');
-  }
+  };
   if(layer) map.removeLayer(layer);
   layer=L.geoJSON(gj,{style:styleFn, onEachFeature:(f,l)=>{
       if(useSD){
         const sd=String(f.properties.sd);
-        l.on('click',()=>{ selectedSD=(selectedSD===sd)?null:sd; selectedPrecinct=null;
+        l.on('click',()=>{ _pickTs=performance.now(); selectedSD=(selectedSD===sd)?null:sd; selectedPrecinct=null;
           layer.setStyle(styleFn); updateLayerLabel(); });
         l.bindPopup(unitPopup('SD'+sd, 'Supervisor District '+sd));
       } else if(useCD){
         l.bindPopup(unitPopup('ALL', 'CD-11 — all precincts'));
       } else {
-        l.on('click',()=>{ const id=String(f.properties.precinct);
+        l.on('click',()=>{ _pickTs=performance.now(); const id=String(f.properties.precinct);
           selectedPrecinct=(selectedPrecinct===id)?null:id; selectedSD=null;
           layer.setStyle(styleFn); updateLayerLabel(); });
         l.bindPopup(popup(f));
@@ -417,6 +418,19 @@ function _syncSheetLabel(){ const c=document.body.classList.contains('panel-coll
 if(_sheet) _sheet.addEventListener('click',()=>{ document.body.classList.toggle('panel-collapsed'); _syncSheetLabel(); });
 if(window.matchMedia('(max-width:760px)').matches) document.body.classList.add('panel-collapsed');
 _syncSheetLabel();
+// --- deselect: click an empty part of the map (not a feature) or press Esc to clear focus ---
+function clearFocus(){
+  if(selectedPrecinct===null && selectedSD===null) return false;
+  selectedPrecinct=null; selectedSD=null;
+  if(layer && styleFn) layer.setStyle(styleFn);
+  updateLayerLabel();
+  return true;
+}
+// Canvas rendering "fakeStops" feature clicks, so map 'click' fires only on empty areas; the
+// _pickTs guard is belt-and-suspenders against any renderer that bubbles the paired click.
+map.on('click', ()=>{ if(performance.now()-_pickTs < 80) return; clearFocus(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ clearFocus(); map.closePopup(); } });
+
 // keep the Leaflet canvas correctly sized through orientation / viewport changes
 window.addEventListener('resize',()=>map.invalidateSize());
 setTimeout(()=>map.invalidateSize(),200);
