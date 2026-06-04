@@ -9,7 +9,6 @@
   *{box-sizing:border-box} body{margin:0;font-family:'Barlow',system-ui,sans-serif;color:var(--navy)}
   #banner{position:sticky;top:0;z-index:1000;background:var(--navy);color:#fff;
     padding:8px 14px;font-weight:700;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-  #banner .prelim{background:var(--orange);color:#191a4d;padding:2px 8px;border-radius:4px}
   #wrap{display:flex;height:calc(100vh - 42px)}
   #map{flex:1} #side{width:370px;overflow:auto;padding:12px;border-left:1px solid #ddd;background:#fafafa}
   .switchwrap{padding:6px 0}
@@ -22,8 +21,6 @@
   .switch button.active{background:var(--navy);color:#fff}
   .switch.geo button{border-color:#888;color:#555}
   .switch.geo button.active{background:#555;color:#fff;border-color:#555}
-  .chip{display:inline-block;font-size:10px;font-weight:700;color:#fff;padding:2px 7px;border-radius:10px}
-  .chip.meas{background:#1b7837}.chip.mod{background:#762a83}.chip.prov{background:#b2182b}
   h3{margin:14px 0 6px;font-size:14px;border-bottom:2px solid var(--orange);padding-bottom:3px}
   table{width:100%;border-collapse:collapse;font-size:11px} td,th{padding:3px 5px;text-align:left}
   th{color:#555;border-bottom:1px solid #ccc} tr:nth-child(even){background:#f0f0f0}
@@ -33,12 +30,11 @@
     background:linear-gradient(90deg,#ffffcc,#c7e9b4,#7fcdbb,#41b6c4,#2c7fb8,#253494)}
   .legend .dramp{height:12px;width:160px;display:block;margin:3px 0;
     background:linear-gradient(90deg,#b2182b,#ef8a62,#f7f7f7,#67a9cf,#2166ac)}
-  .prov-box{background:#fde;border:2px solid #b2182b;border-radius:6px;padding:8px;margin:8px 0}
-  .review{background:#fff3cd;border-left:4px solid #b2182b;padding:6px 8px;margin:6px 0;font-size:11px}
+  .prov-box{padding:8px 0;margin:10px 0;border-top:1px solid #e6e6e6}
+  .review{padding:6px 0;margin:6px 0;font-size:11px;border-top:1px solid #e6e6e6}
   .note{font-size:10px;color:#777;margin-top:4px}
 </style></head><body>
 <div id="banner">
-  <span class="prelim">PRELIMINARY — UNCERTIFIED</span>
   <span id="counted"></span>
   <span id="layerlabel"></span>
 </div>
@@ -91,7 +87,7 @@ function topBottom(m){
   return {top:new Set(rows.slice(0,10).map(r=>r.id)),
           bottom:new Set(rows.slice(-10).map(r=>r.id))};
 }
-let mode='winner', geoMode='precinct', layer=null;
+let mode='winner', geoMode='precinct', layer=null, selectedSD=null, lastUnit={}, lastForceP=false;
 
 function unit(r){ return geoMode==='supervisor' ? ('SD'+r.supervisor_district)
                 : geoMode==='cd11' ? 'ALL' : String(r.precinct); }
@@ -175,20 +171,43 @@ const METRIC_LABEL={winner:'Winner (plurality)', wiener:'Wiener vote share', cha
   tb_saikat:'Top / bottom 10 precincts — Chakrabarti', tb_hura:'Top / bottom 10 precincts — Hurabiell'};
 const GEO_LABEL={precinct:'by precinct', supervisor:'by supervisor district', cd11:'CD-11 total'};
 
+// Supervisor-district focus: click a district to highlight it (dark, thick border)
+// and grey out every other district; click it again (or switch geography) to clear.
+function sdStyle(f){
+  const sd=String(f.properties.sd), base=lastUnit['SD'+sd]||'#e8e8e8';
+  if(selectedSD!==null && sd!==selectedSD)
+    return {fillColor:'#d8d8d8', weight:1, color:'#c2c2c2', fillOpacity:.28, opacity:.85};
+  const sel=(selectedSD===sd);
+  return {fillColor:base, weight:sel?5:2.5, color:sel?'#000000':'#191a4d',
+          fillOpacity:sel?.92:.82, opacity:1};
+}
+function updateLayerLabel(){
+  let extra='';
+  if(!lastForceP && geoMode==='supervisor')
+    extra = selectedSD!==null ? ' · focus: District '+selectedSD+' (click it again to clear)'
+                              : ' · click a district to focus';
+  document.getElementById('layerlabel').textContent =
+     'Layer: ' + METRIC_LABEL[mode] + ' · ' + (lastForceP?'by precinct':GEO_LABEL[geoMode]) + extra;
+}
 function draw(){
   const {unitColor,legend,forcePrecinct}=computeColors();
+  lastUnit=unitColor; lastForceP=forcePrecinct;
   const useSD = (!forcePrecinct && geoMode==='supervisor' && DATA.sd_geo);   // dissolved SD polygons -> no precinct lines
   const gj = useSD ? DATA.sd_geo : DATA.geo;
   if(layer) map.removeLayer(layer);
   layer=L.geoJSON(gj,{style:f=>{
-      const key = useSD ? ('SD'+f.properties.sd)
-                : forcePrecinct ? String(f.properties.precinct)
+      if(useSD) return sdStyle(f);
+      const key = forcePrecinct ? String(f.properties.precinct)
                 : geoMode==='cd11' ? 'ALL' : String(f.properties.precinct);
-      return {fillColor: unitColor[key]||'#e8e8e8',
-              weight: useSD?2.5:0.9, color: useSD?'#191a4d':'#222222', fillOpacity:.82};
-    }, onEachFeature:(f,l)=>l.bindPopup(useSD?('<b>Supervisor District '+f.properties.sd+'</b>'):popup(f))}).addTo(map);
-  document.getElementById('layerlabel').textContent =
-     'Layer: ' + METRIC_LABEL[mode] + ' · ' + (forcePrecinct?'by precinct':GEO_LABEL[geoMode]);
+      return {fillColor: unitColor[key]||'#e8e8e8', weight:0.9, color:'#222222', fillOpacity:.82};
+    }, onEachFeature:(f,l)=>{
+      if(useSD){
+        l.on('click',()=>{ const sd=String(f.properties.sd);
+          selectedSD=(selectedSD===sd)?null:sd; layer.setStyle(sdStyle); updateLayerLabel(); });
+        l.bindPopup('<b>Supervisor District '+f.properties.sd+'</b>');
+      } else { l.bindPopup(popup(f)); }
+    }}).addTo(map);
+  updateLayerLabel();
   renderLegend(legend);
 }
 function renderLegend(lg){
@@ -233,30 +252,30 @@ function buildSwitch(elId, items, getActive, onPick){
       [...el.children].forEach(x=>x.className=''); b.className='active'; draw(); }; el.appendChild(b); });
 }
 buildMetricGroups();
-buildSwitch('geoSwitch', GEOS, ()=>geoMode, k=>{geoMode=k;});
+buildSwitch('geoSwitch', GEOS, ()=>geoMode, k=>{geoMode=k; selectedSD=null;});
 
 document.getElementById('counted').textContent =
-  `${DATA.citywide.counted.toLocaleString()} ballots · ${((DATA.citywide.turnout?.cd11?.pct ?? 0)*100).toFixed(1)}% CD-11 turnout · as of ${DATA.as_of}`;
+  `${DATA.citywide.counted.toLocaleString()} ballots · ${((DATA.citywide.turnout?.cd11?.pct ?? 0)*100).toFixed(1)}% CD-11 turnout · preliminary · as of ${DATA.as_of}`;
 
 function panel(){
-  let h=`<h3>Topline — CD-11 <span class="chip meas">official count</span></h3><table>`;
+  let h=`<h3>Topline — CD-11</h3><table>`;
   DATA.citywide.candidates.slice(0,6).forEach(c=>h+=`<tr><td>${c.name}</td><td>${c.votes.toLocaleString()}</td><td>${(c.share*100).toFixed(1)}%</td></tr>`);
   h+='</table>';
   ['d2','d4'].forEach(u=>{ const r=(DATA.rcv||{})[u]; if(!r)return;
-    h+=`<h3>${r.contest.replace('MEMBER, BOARD OF SUPERVISORS, ','')} — ranked-choice <span class="chip meas">official count</span></h3>`;
+    h+=`<h3>${r.contest.replace('MEMBER, BOARD OF SUPERVISORS, ','')} — ranked-choice</h3>`;
     h+='<table><tr><th>#</th><th>Candidate</th><th>1st-choice</th></tr>';
     r.first_choice.forEach((c,i)=>h+=`<tr><td>${i+1}</td><td>${c.candidate.replace(/\b\w/g,m=>m.toUpperCase())}</td><td>${((c.pct||0)*100).toFixed(1)}%</td></tr>`);
     h+='</table>';
   });
   if((DATA.measures||[]).length){
-    h+=`<h3>SF ballot measures <span class="chip meas">official count</span></h3>`;
+    h+=`<h3>SF ballot measures</h3>`;
     h+='<table><tr><th>Measure</th><th>Yes</th><th>No</th><th>Votes</th></tr>';
     DATA.measures.forEach(m=>h+=`<tr><td>${m.name}</td><td>${m.yes}%</td><td>${m.no}%</td><td>${(m.total||0).toLocaleString()}</td></tr>`);
     h+='</table>';
   }
   if(DATA.ei && DATA.ei.age){
     const agreed=(DATA.ei.age.eicompare&&DATA.ei.age.eicompare.available);
-    h+=`<div class="prov-box"><span class="chip prov">ESTIMATE</span> <b>How age groups voted — modeled, preliminary</b>
+    h+=`<div class="prov-box"><b>How age groups voted — modeled, preliminary</b>
       <div class="note">${DATA.ei.age.watermark}</div>
       <div class="note">Estimated from precinct-level vote totals; directional, not exact.${agreed?' A second, independent method agrees on the direction.':''}</div>`;
     if(DATA.age_vote_img){ h+=`<img src="data:image/png;base64,${DATA.age_vote_img}" style="width:100%;margin-top:6px;border-radius:4px"/>`; }
@@ -265,7 +284,7 @@ function panel(){
   if(DATA.ei && DATA.ei.race && (DATA.ei.race.cells||[]).length){
     const r=DATA.ei.race, majors=['SCOTT WIENER','CONNIE CHAN','SAIKAT CHAKRABARTI'], byg={};
     r.cells.forEach(c=>{ if(majors.includes(c.candidate)){ byg[c.group]=byg[c.group]||{n:c.homogeneous_precincts_ge60pct,v:{}}; byg[c.group].v[c.candidate]=(c.homogeneous_precinct_est||{})['>=60%']; }});
-    h+=`<div class="prov-box"><span class="chip mod">ESTIMATE</span> <b>How race groups voted (heavily-one-group precincts)</b>
+    h+=`<div class="prov-box"><b>How race groups voted — modeled estimate (heavily-one-group precincts)</b>
       <div class="note">${r.watermark}</div><table><tr><th>Group</th><th>≥60% prec</th><th>Wiener</th><th>Chan</th><th>Saikat</th></tr>`;
     Object.keys(byg).forEach(g=>{const o=byg[g];const f=x=>o.v[x]!=null?(o.v[x]*100).toFixed(1)+'%':'—';
       h+=`<tr><td>${g}</td><td>${o.n}</td><td>${f('SCOTT WIENER')}</td><td>${f('CONNIE CHAN')}</td><td>${f('SAIKAT CHAKRABARTI')}</td></tr>`;});
