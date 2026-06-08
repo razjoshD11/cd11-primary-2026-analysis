@@ -358,11 +358,11 @@ const METRIC_GROUPS=[
   {label:'Supervisor races', items:[['sup_d2','District 2'],['sup_d4','District 4']]},
   {label:'Top / bottom 10 precincts', items:[['tb_wiener','Wiener'],['tb_chan','Chan'],['tb_saikat','Chakrabarti'],['tb_hura','Hurabiell']]},
 ];
-// "What predicted the vote" — one precinct choropleth per neighborhood trait, so you
+// "Voter Demographics" — one precinct choropleth per neighborhood trait, so you
 // can eyeball each trait's geography against the Wiener / Chan share layers above.
 const DRIVERS=DATA.drivers||{}, DMETA=DATA.driver_meta||[], DMETA_BY={};
-DMETA.forEach(d=>{ DMETA_BY['drv_'+d.k]=d; METRIC_LABEL['drv_'+d.k]='Voter make-up — '+d.label; });
-if(DMETA.length) METRIC_GROUPS.push({label:'What predicted the vote', items:DMETA.map(d=>['drv_'+d.k,d.short])});
+DMETA.forEach(d=>{ DMETA_BY['drv_'+d.k]=d; METRIC_LABEL['drv_'+d.k]='Voter Demographics — '+d.label; });
+if(DMETA.length) METRIC_GROUPS.push({label:'Voter Demographics', items:DMETA.map(d=>['drv_'+d.k,d.short])});
 const GEOS=[['precinct','Precinct'],['supervisor','Supervisor district'],['cd11','CD-11 total']];
 function buildMetricGroups(){
   const host=document.getElementById('metricSwitch'); host.innerHTML='';
